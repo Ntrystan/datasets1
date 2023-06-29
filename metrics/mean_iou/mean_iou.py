@@ -251,14 +251,11 @@ def mean_iou(
         results, gt_seg_maps, num_labels, ignore_index, label_map, reduce_labels
     )
 
-    # compute metrics
-    metrics = {}
-
     all_acc = total_area_intersect.sum() / total_area_label.sum()
     iou = total_area_intersect / total_area_union
     acc = total_area_intersect / total_area_label
 
-    metrics["mean_iou"] = np.nanmean(iou)
+    metrics = {"mean_iou": np.nanmean(iou)}
     metrics["mean_accuracy"] = np.nanmean(acc)
     metrics["overall_accuracy"] = all_acc
     metrics["per_category_iou"] = iou
@@ -299,7 +296,7 @@ class MeanIoU(datasets.Metric):
         label_map: Optional[Dict[int, int]] = None,
         reduce_labels: bool = False,
     ):
-        iou_result = mean_iou(
+        return mean_iou(
             results=predictions,
             gt_seg_maps=references,
             num_labels=num_labels,
@@ -308,4 +305,3 @@ class MeanIoU(datasets.Metric):
             label_map=label_map,
             reduce_labels=reduce_labels,
         )
-        return iou_result

@@ -84,10 +84,12 @@ class TFFormatter(TensorFormatter[Mapping, "tf.Tensor", Mapping]):
         if hasattr(data_struct, "__array__") and not isinstance(data_struct, tf.Tensor):
             data_struct = data_struct.__array__()
         # support for nested types like struct of list of struct
-        if isinstance(data_struct, np.ndarray):
-            if data_struct.dtype == object:  # tf tensors cannot be instantied from an array of objects
-                return self._consolidate([self.recursive_tensorize(substruct) for substruct in data_struct])
-        elif isinstance(data_struct, (list, tuple)):
+        if (
+            isinstance(data_struct, np.ndarray)
+            and data_struct.dtype == object
+            or not isinstance(data_struct, np.ndarray)
+            and isinstance(data_struct, (list, tuple))
+        ):  # tf tensors cannot be instantied from an array of objects
             return self._consolidate([self.recursive_tensorize(substruct) for substruct in data_struct])
         return self._tensorize(data_struct)
 

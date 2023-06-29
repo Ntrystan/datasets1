@@ -34,13 +34,12 @@ class NumpyFormatter(TensorFormatter[Mapping, np.ndarray, Mapping]):
                 isinstance(x, np.ndarray) and x.shape == column[0].shape and x.dtype == column[0].dtype for x in column
             ):
                 return np.stack(column)
-            else:
-                # don't use np.array(column, dtype=object)
-                # since it fails in certain cases
-                # see https://stackoverflow.com/q/51005699
-                out = np.empty(len(column), dtype=object)
-                out[:] = column
-                return out
+            # don't use np.array(column, dtype=object)
+            # since it fails in certain cases
+            # see https://stackoverflow.com/q/51005699
+            out = np.empty(len(column), dtype=object)
+            out[:] = column
+            return out
         return column
 
     def _tensorize(self, value):

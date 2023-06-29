@@ -130,7 +130,7 @@ def test_convert_to_arrow(batch_size, drop_last_batch):
     num_batches = (num_rows // batch_size) + 1 if num_rows % batch_size else num_rows // batch_size
     subtables = list(
         _convert_to_arrow(
-            [(i, example) for i, example in enumerate(examples)],
+            list(enumerate(examples)),
             batch_size=batch_size,
             drop_last_batch=drop_last_batch,
         )
@@ -162,7 +162,9 @@ def test_batch_arrow_tables(tables, batch_size, drop_last_batch):
     num_batches = (num_rows // batch_size) + 1 if num_rows % batch_size else num_rows // batch_size
     subtables = list(
         _batch_arrow_tables(
-            [(i, table) for i, table in enumerate(tables)], batch_size=batch_size, drop_last_batch=drop_last_batch
+            list(enumerate(tables)),
+            batch_size=batch_size,
+            drop_last_batch=drop_last_batch,
         )
     )
     assert len(subtables) == num_batches
@@ -227,7 +229,9 @@ def test_examples_iterable_shuffle_shards_and_metadata():
 
 def test_arrow_examples_iterable():
     ex_iterable = ArrowExamplesIterable(generate_tables_fn, {})
-    expected = sum([pa_table.to_pylist() for _, pa_table in generate_tables_fn()], [])
+    expected = sum(
+        (pa_table.to_pylist() for _, pa_table in generate_tables_fn()), []
+    )
     assert next(iter(ex_iterable))[1] == expected[0]
     assert [example for _, example in ex_iterable] == expected
     expected = list(generate_tables_fn())
@@ -237,7 +241,13 @@ def test_arrow_examples_iterable():
 def test_arrow_examples_iterable_with_kwargs():
     ex_iterable = ArrowExamplesIterable(generate_tables_fn, {"filepaths": ["0.txt", "1.txt"], "split": "train"})
     expected = sum(
-        [pa_table.to_pylist() for _, pa_table in generate_tables_fn(filepaths=["0.txt", "1.txt"], split="train")], []
+        (
+            pa_table.to_pylist()
+            for _, pa_table in generate_tables_fn(
+                filepaths=["0.txt", "1.txt"], split="train"
+            )
+        ),
+        [],
     )
     assert [example for _, example in ex_iterable] == expected
     assert all("split" in ex for _, ex in ex_iterable)
@@ -250,8 +260,12 @@ def test_arrow_examples_iterable_shuffle_data_sources():
     ex_iterable = ArrowExamplesIterable(generate_tables_fn, {"filepaths": ["0.txt", "1.txt"]})
     ex_iterable = ex_iterable.shuffle_data_sources(np.random.default_rng(40))
     expected = sum(
-        [pa_table.to_pylist() for _, pa_table in generate_tables_fn(filepaths=["1.txt", "0.txt"])], []
-    )  # shuffle the filepaths
+        (
+            pa_table.to_pylist()
+            for _, pa_table in generate_tables_fn(filepaths=["1.txt", "0.txt"])
+        ),
+        [],
+    )
     assert [example for _, example in ex_iterable] == expected
     expected = list(generate_tables_fn(filepaths=["1.txt", "0.txt"]))
     assert list(ex_iterable.iter_arrow()) == expected
@@ -278,7 +292,7 @@ def test_buffer_shuffled_examples_iterable(seed):
     # We create a buffer and we pick random examples from it.
     buffer, rest = all_examples[:buffer_size], all_examples[buffer_size:]
     expected = []
-    for i, index_to_pick in enumerate(expected_indices_used_for_shuffling):
+    for index_to_pick in expected_indices_used_for_shuffling:
         expected.append(buffer[index_to_pick])
         # The picked examples are directly replaced by the next examples from the iterable.
         buffer[index_to_pick] = rest.pop(0)
@@ -502,7 +516,7 @@ def test_mapped_examples_iterable_remove_columns(n, func, batched, batch_size, r
             transformed_batch = func(batch)
             all_transformed_examples.extend(_batch_to_examples(transformed_batch))
         expected = {k: v for k, v in _examples_to_batch(all_examples).items() if k not in columns_to_remove}
-        expected.update(_examples_to_batch(all_transformed_examples))
+        expected |= _examples_to_batch(all_transformed_examples)
         expected = list(_batch_to_examples(expected))
     assert next(iter(ex_iterable))[1] == expected[0]
     assert [x for _, x in ex_iterable] == expected
@@ -1157,9 +1171,7 @@ def test_from_spark_streaming():
     df = spark.createDataFrame(data, "col_1: string, col_2: int, col_3: float")
     dataset = IterableDataset.from_spark(df)
     assert isinstance(dataset, IterableDataset)
-    results = []
-    for ex in dataset:
-        results.append(ex)
+    results = list(dataset)
     assert results == [
         {"col_1": "0", "col_2": 0, "col_3": 0.0},
         {"col_1": "1", "col_2": 1, "col_3": 1.0},
@@ -1184,9 +1196,7 @@ def test_from_spark_streaming_features():
         features=features,
     )
     assert isinstance(dataset, IterableDataset)
-    results = []
-    for ex in dataset:
-        results.append(ex)
+    results = list(dataset)
     assert len(results) == 1
     isinstance(results[0]["image"], PIL.Image.Image)
 
@@ -1274,11 +1284,12 @@ def test_iterable_dataset_iter_batch(batch_size, drop_last_batch):
     n = 25
     dataset = IterableDataset(ExamplesIterable(generate_examples_fn, {"n": n}))
     all_examples = [ex for _, ex in generate_examples_fn(n=n)]
-    expected = []
-    for i in range(0, len(all_examples), batch_size):
-        if len(all_examples[i : i + batch_size]) < batch_size and drop_last_batch:
-            continue
-        expected.append(_examples_to_batch(all_examples[i : i + batch_size]))
+    expected = [
+        _examples_to_batch(all_examples[i : i + batch_size])
+        for i in range(0, len(all_examples), batch_size)
+        if len(all_examples[i : i + batch_size]) >= batch_size
+        or not drop_last_batch
+    ]
     assert next(iter(dataset.iter(batch_size, drop_last_batch=drop_last_batch))) == expected[0]
     assert list(dataset.iter(batch_size, drop_last_batch=drop_last_batch)) == expected
 
@@ -1573,7 +1584,8 @@ def test_iterable_dataset_remove_columns(dataset_with_several_columns):
     assert new_dataset.features is None
     new_dataset = dataset_with_several_columns.remove_columns(["id", "filepath"])
     assert list(new_dataset) == [
-        {k: v for k, v in example.items() if k != "id" and k != "filepath"} for example in dataset_with_several_columns
+        {k: v for k, v in example.items() if k not in ["id", "filepath"]}
+        for example in dataset_with_several_columns
     ]
     assert new_dataset.features is None
     assert new_dataset.column_names is None
@@ -1841,7 +1853,7 @@ def test_with_format_torch(dataset_with_several_columns: IterableDataset):
     batch = next(iter(dset.iter(batch_size=3)))
     assert len(example) == 3
     assert isinstance(example["id"], torch.Tensor)
-    assert list(example["id"].shape) == []
+    assert not list(example["id"].shape)
     assert example["id"].item() == 0
     assert isinstance(batch["id"], torch.Tensor)
     assert isinstance(example["filepath"], list)
@@ -1862,7 +1874,7 @@ def test_with_format_tf(dataset_with_several_columns: IterableDataset):
     example = next(iter(dset))
     batch = next(iter(dset.iter(batch_size=3)))
     assert isinstance(example["id"], tf.Tensor)
-    assert list(example["id"].shape) == []
+    assert not list(example["id"].shape)
     assert example["id"].numpy().item() == 0
     assert isinstance(batch["id"], tf.Tensor)
     assert isinstance(example["filepath"], tf.Tensor)

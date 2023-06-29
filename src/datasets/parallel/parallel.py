@@ -39,7 +39,7 @@ def parallel_map(function, iterable, num_proc, types, disable_tqdm, desc, single
 
 
 def _map_with_multiprocessing_pool(function, iterable, num_proc, types, disable_tqdm, desc, single_map_nested_func):
-    num_proc = num_proc if num_proc <= len(iterable) else len(iterable)
+    num_proc = min(num_proc, len(iterable))
     split_kwds = []  # We organize the splits ourselve (contiguous splits)
     for index in range(num_proc):
         div = len(iterable) // num_proc

@@ -17,8 +17,7 @@ from .text import text
 def _hash_python_lines(lines: List[str]) -> str:
     filtered_lines = []
     for line in lines:
-        line = re.sub(r"#.*", "", line)  # remove comments
-        if line:
+        if line := re.sub(r"#.*", "", line):
             filtered_lines.append(line)
     full_str = "\n".join(filtered_lines)
 
@@ -39,20 +38,27 @@ _PACKAGED_DATASETS_MODULES = {
     "audiofolder": (audiofolder.__name__, _hash_python_lines(inspect.getsource(audiofolder).splitlines())),
 }
 
-# Used to infer the module to use based on the data files extensions
-_EXTENSION_TO_MODULE = {
-    ".csv": ("csv", {}),
-    ".tsv": ("csv", {"sep": "\t"}),
-    ".json": ("json", {}),
-    ".jsonl": ("json", {}),
-    ".parquet": ("parquet", {}),
-    ".arrow": ("arrow", {}),
-    ".txt": ("text", {}),
-}
-_EXTENSION_TO_MODULE.update({ext: ("imagefolder", {}) for ext in imagefolder.ImageFolder.EXTENSIONS})
-_EXTENSION_TO_MODULE.update({ext.upper(): ("imagefolder", {}) for ext in imagefolder.ImageFolder.EXTENSIONS})
-_EXTENSION_TO_MODULE.update({ext: ("audiofolder", {}) for ext in audiofolder.AudioFolder.EXTENSIONS})
-_EXTENSION_TO_MODULE.update({ext.upper(): ("audiofolder", {}) for ext in audiofolder.AudioFolder.EXTENSIONS})
+_EXTENSION_TO_MODULE = (
+    {
+        ".csv": ("csv", {}),
+        ".tsv": ("csv", {"sep": "\t"}),
+        ".json": ("json", {}),
+        ".jsonl": ("json", {}),
+        ".parquet": ("parquet", {}),
+        ".arrow": ("arrow", {}),
+        ".txt": ("text", {}),
+    }
+    | {ext: ("imagefolder", {}) for ext in imagefolder.ImageFolder.EXTENSIONS}
+    | {
+        ext.upper(): ("imagefolder", {})
+        for ext in imagefolder.ImageFolder.EXTENSIONS
+    }
+    | {ext: ("audiofolder", {}) for ext in audiofolder.AudioFolder.EXTENSIONS}
+    | {
+        ext.upper(): ("audiofolder", {})
+        for ext in audiofolder.AudioFolder.EXTENSIONS
+    }
+)
 _MODULE_SUPPORTS_METADATA = {"imagefolder", "audiofolder"}
 
 # Used to filter data files based on extensions given a module name

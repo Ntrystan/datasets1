@@ -61,16 +61,17 @@ class Section:
                 continue
             elif line.strip(" \n")[:3] == "```":
                 code_start = not code_start
-            elif line.split()[0] == self.level + "#" and not code_start:
+            elif line.split()[0] == f"{self.level}#" and not code_start:
                 if current_sub_level != "":
-                    self.content[current_sub_level] = Section(current_sub_level, self.level + "#", current_lines)
+                    self.content[current_sub_level] = Section(
+                        current_sub_level, f"{self.level}#", current_lines
+                    )
                     current_lines = []
-                else:
-                    if current_lines != []:
-                        self.text += "".join(current_lines).strip()
-                        if self.text != "" and self.text not in FILLER_TEXT:
-                            self.is_empty_text = False
-                        current_lines = []
+                elif current_lines != []:
+                    self.text += "".join(current_lines).strip()
+                    if self.text != "" and self.text not in FILLER_TEXT:
+                        self.is_empty_text = False
+                    current_lines = []
 
                 current_sub_level = " ".join(line.split()[1:]).strip(" \n")
             else:
@@ -81,17 +82,18 @@ class Section:
                     self.parsing_error_list.append(
                         f"Multiple sections with the same heading `{current_sub_level}` have been found. Please keep only one of these sections."
                     )
-                self.content[current_sub_level] = Section(current_sub_level, self.level + "#", current_lines)
-            else:
-                if current_lines != []:
-                    self.text += "".join(current_lines).strip()
-                    if self.text != "" and self.text not in FILLER_TEXT:
-                        self.is_empty_text = False
+                self.content[current_sub_level] = Section(
+                    current_sub_level, f"{self.level}#", current_lines
+                )
+            elif current_lines != []:
+                self.text += "".join(current_lines).strip()
+                if self.text != "" and self.text not in FILLER_TEXT:
+                    self.is_empty_text = False
 
         if self.level == "" and not suppress_parsing_errors:
             if self.parsing_error_list != [] or self.parsing_warning_list != []:
                 errors = errors = "\n".join("-\t" + x for x in self.parsing_error_list + self.parsing_warning_list)
-                error_string = f"The following issues were found while parsing the README at `{self.name}`:\n" + errors
+                error_string = f"The following issues were found while parsing the README at `{self.name}`:\n{errors}"
                 raise ValueError(error_string)
 
     def validate(self, structure: dict) -> ReadmeValidatorOutput:
@@ -127,7 +129,7 @@ class Section:
                 values = [subsection["name"] for subsection in structure["subsections"]]
                 # Mention the expected values in the error_list
                 error_list.append(
-                    f"Section `{self.name}` expected the following subsections: {', '.join(['`'+x+'`' for x in values])}. Found 'None'."
+                    f"Section `{self.name}` expected the following subsections: {', '.join([f'`{x}`' for x in values])}. Found 'None'."
                 )
             else:
                 # If some subsections are present
@@ -193,7 +195,7 @@ class ReadMe(Section):  # Level 0
             content, error_list, warning_list = self._validate(self.structure)
         if error_list != [] or warning_list != []:
             errors = "\n".join(["-\t" + x for x in error_list + warning_list])
-            error_string = f"The following issues were found for the README at `{self.name}`:\n" + errors
+            error_string = f"The following issues were found for the README at `{self.name}`:\n{errors}"
             raise ValueError(error_string)
 
     @classmethod
@@ -244,7 +246,7 @@ class ReadMe(Section):  # Level 0
         if num_first_level_keys > 1:
             # If more than one, add to the error list, continue
             error_list.append(
-                f"The README has several first-level headings: {', '.join(['`'+x+'`' for x in list(self.content.keys())])}. Only one heading is expected. Skipping further validation for this README."
+                f"The README has several first-level headings: {', '.join([f'`{x}`' for x in list(self.content.keys())])}. Only one heading is expected. Skipping further validation for this README."
             )
         elif num_first_level_keys < 1:
             # If less than one, append error.
