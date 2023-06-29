@@ -190,7 +190,8 @@ class BuilderConfig:
             }
             if all(isinstance(v, (str, bool, int, float)) for v in config_kwargs_to_add_to_suffix.values()):
                 suffix = ",".join(
-                    str(k) + "=" + urllib.parse.quote_plus(str(v)) for k, v in config_kwargs_to_add_to_suffix.items()
+                    f"{str(k)}={urllib.parse.quote_plus(str(v))}"
+                    for k, v in config_kwargs_to_add_to_suffix.items()
                 )
                 if len(suffix) > 32:  # hash if too long
                     suffix = Hasher.hash(config_kwargs_to_add_to_suffix)
@@ -204,13 +205,12 @@ class BuilderConfig:
             m.update(custom_features)
             suffix = m.hexdigest()
 
-        if suffix:
-            config_id = self.name + "-" + suffix
-            if len(config_id) > config.MAX_DATASET_CONFIG_ID_READABLE_LENGTH:
-                config_id = self.name + "-" + Hasher.hash(suffix)
-            return config_id
-        else:
+        if not suffix:
             return self.name
+        config_id = f"{self.name}-{suffix}"
+        if len(config_id) > config.MAX_DATASET_CONFIG_ID_READABLE_LENGTH:
+            config_id = f"{self.name}-{Hasher.hash(suffix)}"
+        return config_id
 
 
 class DatasetBuilder:
@@ -602,10 +602,8 @@ class DatasetBuilder:
 
             version_dirnames = []
             for dir_name in os.listdir(builder_data_dir):
-                try:
+                with contextlib.suppress(ValueError):
                     version_dirnames.append((utils.Version(dir_name), dir_name))
-                except ValueError:  # Invalid version (ex: incomplete data dir)
-                    pass
             version_dirnames.sort(reverse=True)
             return version_dirnames
 
@@ -824,7 +822,7 @@ class DatasetBuilder:
         if is_local:
             # Create parent directory of the output_dir to put the lock file in there
             Path(self._output_dir).parent.mkdir(parents=True, exist_ok=True)
-            lock_path = self._output_dir + "_builder.lock"
+            lock_path = f"{self._output_dir}_builder.lock"
 
         # File locking only with local paths; no file locking on GCS or S3
         with FileLock(lock_path) if is_local else contextlib.nullcontext():
@@ -855,7 +853,7 @@ class DatasetBuilder:
                     self._fs.makedirs(dirname, exist_ok=True)
                     yield dirname
                 else:
-                    tmp_dir = dirname + ".incomplete"
+                    tmp_dir = f"{dirname}.incomplete"
                     os.makedirs(tmp_dir, exist_ok=True)
                     try:
                         yield tmp_dir
@@ -948,13 +946,15 @@ class DatasetBuilder:
         downloaded_info = DatasetInfo.from_directory(self._output_dir)
         self.info.update(downloaded_info)
         # download post processing resources
-        remote_cache_dir = HF_GCP_BASE_URL + "/" + relative_data_dir.replace(os.sep, "/")
+        remote_cache_dir = f"{HF_GCP_BASE_URL}/" + relative_data_dir.replace(
+            os.sep, "/"
+        )
         for split in self.info.splits:
             for resource_file_name in self._post_processing_resources(split).values():
                 if os.sep in resource_file_name:
                     raise ValueError(f"Resources shouldn't be in a sub-directory: {resource_file_name}")
                 try:
-                    resource_path = cached_path(remote_cache_dir + "/" + resource_file_name)
+                    resource_path = cached_path(f"{remote_cache_dir}/{resource_file_name}")
                     shutil.move(resource_path, os.path.join(self._output_dir, resource_file_name))
                 except ConnectionError:
                     logger.info(f"Couldn't download resourse file {resource_file_name} from Hf google storage.")
@@ -1018,7 +1018,10 @@ class DatasetBuilder:
                 ) from None
             dl_manager.manage_extracted_files()
 
-        if verification_mode == VerificationMode.BASIC_CHECKS or verification_mode == VerificationMode.ALL_CHECKS:
+        if verification_mode in [
+            VerificationMode.BASIC_CHECKS,
+            VerificationMode.ALL_CHECKS,
+        ]:
             verify_splits(self.info.splits, split_dict)
 
         # Update the info object with the splits.
@@ -1028,16 +1031,15 @@ class DatasetBuilder:
     def download_post_processing_resources(self, dl_manager):
         for split in self.info.splits or []:
             for resource_name, resource_file_name in self._post_processing_resources(split).items():
-                if not not is_remote_filesystem(self._fs):
+                if is_remote_filesystem(self._fs):
                     raise NotImplementedError(f"Post processing is not supported on filesystem {self._fs}")
                 if os.sep in resource_file_name:
                     raise ValueError(f"Resources shouldn't be in a sub-directory: {resource_file_name}")
                 resource_path = os.path.join(self._output_dir, resource_file_name)
                 if not os.path.exists(resource_path):
-                    downloaded_resource_path = self._download_post_processing_resources(
+                    if downloaded_resource_path := self._download_post_processing_resources(
                         split, resource_name, dl_manager
-                    )
-                    if downloaded_resource_path:
+                    ):
                         logger.info(f"Downloaded post-processing resource {resource_name} as {resource_file_name}")
                         shutil.move(downloaded_resource_path, resource_path)
 
@@ -1047,14 +1049,14 @@ class DatasetBuilder:
     def _save_info(self):
         is_local = not is_remote_filesystem(self._fs)
         if is_local:
-            lock_path = self._output_dir + "_info.lock"
+            lock_path = f"{self._output_dir}_info.lock"
         with FileLock(lock_path) if is_local else contextlib.nullcontext():
             self.info.write_to_directory(self._output_dir, storage_options=self._fs.storage_options)
 
     def _save_infos(self):
         is_local = not is_remote_filesystem(self._fs)
         if is_local:
-            lock_path = self._output_dir + "_infos.lock"
+            lock_path = f"{self._output_dir}_infos.lock"
         with FileLock(lock_path) if is_local else contextlib.nullcontext():
             DatasetInfosDict(**{self.config.name: self.info}).write_to_directory(self.get_imported_module_dir())
 
@@ -1257,8 +1259,7 @@ class DatasetBuilder:
         hasher = Hasher()
         hasher.update(self._relative_data_dir().replace(os.sep, "/"))
         hasher.update(str(split))  # for example: train, train+test, train[:10%], test[:33%](pct1_dropremainder)
-        fingerprint = hasher.hexdigest()
-        return fingerprint
+        return hasher.hexdigest()
 
     def as_streaming_dataset(
         self,
@@ -1670,9 +1671,9 @@ class GeneratorBasedBuilder(DatasetBuilder):
         super()._download_and_prepare(
             dl_manager,
             verification_mode,
-            check_duplicate_keys=verification_mode == VerificationMode.BASIC_CHECKS
-            or verification_mode == VerificationMode.ALL_CHECKS,
-            **prepare_splits_kwargs,
+            check_duplicate_keys=verification_mode
+            in [VerificationMode.BASIC_CHECKS, VerificationMode.ALL_CHECKS],
+            **prepare_splits_kwargs
         )
 
     def _get_examples_iterable_for_split(self, split_generator: SplitGenerator) -> ExamplesIterable:
@@ -2154,4 +2155,4 @@ class BeamBasedBuilder(DatasetBuilder):
     @property
     def _remote_cache_dir_from_hf_gcs(self):
         relative_data_dir = self._relative_data_dir(with_hash=False)
-        return HF_GCP_BASE_URL + "/" + relative_data_dir.replace(os.sep, "/")
+        return f"{HF_GCP_BASE_URL}/" + relative_data_dir.replace(os.sep, "/")

@@ -105,7 +105,7 @@ class Spark(datasets.DatasetBuilder):
             # makedirs with exist_ok will recursively create the directory. It will not throw an error if directories
             # already exist.
             os.makedirs(self._cache_dir, exist_ok=True)
-            probe_file = os.path.join(self._cache_dir, "fs_test" + uuid.uuid4().hex)
+            probe_file = os.path.join(self._cache_dir, f"fs_test{uuid.uuid4().hex}")
             # Opening the file in append mode will create a new file unless it already exists, in which case it will not
             # change the file contents.
             open(probe_file, "a")
